@@ -6,12 +6,14 @@ use tracing_subscriber::fmt::format::FmtSpan;
 
 #[tokio::main]
 async fn main() {
-    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "tracing=info,warp=debug".to_owned());
+    /*
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "tracing=info".to_owned());
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_span_events(FmtSpan::CLOSE)
         .init();
 
+     */
     let url = env::var("SERVICE_URL").unwrap();
     let verifier = lnurl::auth::AuthVerifier::new();
     let db = model::new_db();
@@ -157,17 +159,20 @@ mod handler {
 }
 
 mod img {
-    use bech32::ToBase32;
-    use image::{DynamicImage, ImageOutputFormat, Luma};
+    use bech32::{Bech32, Hrp};
+    use image::{load_from_memory, DynamicImage, GrayImage, ImageBuffer, ImageFormat, Luma};
     use qrcode::QrCode;
+    use std::io::{Cursor, Read};
 
     pub fn create_qrcode(url: &str) -> Vec<u8> {
-        let encoded = bech32::encode("lnurl", url.as_bytes().to_base32()).unwrap();
+        let hrp = Hrp::parse("lnurl").expect("valid hrp");
+        let encoded =
+            bech32::encode::<Bech32>(hrp, url.as_bytes()).expect("failed to encode string");
         let code = QrCode::new(encoded.to_string()).unwrap();
-        let mut image: Vec<u8> = Vec::new();
-        let img = DynamicImage::ImageLuma8(code.render::<Luma<u8>>().build());
-        img.write_to(&mut image, ImageOutputFormat::PNG).unwrap();
-        image
+        let image = DynamicImage::ImageLuma8(code.render::<Luma<u8>>().build());
+        let mut target = Cursor::new(vec![]);
+        let _ = image.write_to(&mut target, ImageFormat::Png);
+        target.into_inner()
     }
 }
 

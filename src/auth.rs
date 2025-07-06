@@ -1,7 +1,10 @@
 extern crate hex;
 extern crate secp256k1;
 
-use secp256k1::{Error, Message, PublicKey, Secp256k1, Signature, Verification, VerifyOnly};
+use secp256k1::hashes::{sha256, Hash};
+use secp256k1::{ecdsa::Signature, Error, Message, PublicKey, Secp256k1, Verification, VerifyOnly};
+use std::convert::TryInto;
+use std::io::Read;
 
 /// VerifierError is the AuthVerifier errors.
 #[derive(Debug)]
@@ -28,21 +31,23 @@ impl AuthVerifier {
         let msg = hex::decode(hk1).map_err(|e| VerifierError::HexError(e))?;
         let sig = hex::decode(hsig).map_err(|e| VerifierError::HexError(e))?;
         let pubkey = hex::decode(hpubkey).map_err(|e| VerifierError::HexError(e))?;
-        return verify_sig(&self.secp, &msg, &sig, &pubkey)
-            .map_err(|e| VerifierError::Secp256k1Error(e));
+        let bytes: [u8; 32] = msg.try_into().expect("wrong length");
+        verify_sig(&self.secp, &bytes, &sig, &pubkey).map_err(|e| VerifierError::Secp256k1Error(e))
     }
 }
 
 /// verify_sig checks if the signature of a key for a given message is valid.
 pub fn verify_sig<C: Verification>(
     secp: &Secp256k1<C>,
-    msg: &[u8],
+    msg: &[u8; 32],
     sig: &[u8],
     pubkey: &[u8],
 ) -> Result<bool, Error> {
-    let msg = Message::from_slice(&msg)?;
+    //let digest = sha256::Hash::hash(msg);
+    //let message = Message::from_digest(digest.to_byte_array());
+    let message = Message::from_digest(msg.to_owned());
     let sig = Signature::from_der(sig)?;
     let pubkey = PublicKey::from_slice(pubkey)?;
-    secp.verify(&msg, &sig, &pubkey)?;
+    secp.verify_ecdsa(message, &sig, &pubkey)?;
     Ok(true)
 }
